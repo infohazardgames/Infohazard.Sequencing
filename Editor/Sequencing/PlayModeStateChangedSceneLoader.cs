@@ -36,6 +36,11 @@ namespace Infohazard.Sequencing.Editor {
 
         private static void EditorApplication_PlayModeStateChanged(PlayModeStateChange mode) {
             if (!SequencingEditorPrefs.AutoLoadScene0InEditor) return;
+
+            // The Unity Test Framework enters play mode from a temporary scene for PlayMode tests.
+            // Replacing it with scene 0 would break the test run.
+            if (SceneManager.GetActiveScene().path.StartsWith("Assets/InitTestScene")) return;
+
             if (mode == PlayModeStateChange.ExitingEditMode) {
                 LoadFromInitialScene(true);
             } else if (mode == PlayModeStateChange.EnteredEditMode) {
