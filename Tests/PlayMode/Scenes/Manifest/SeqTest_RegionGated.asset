@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 496956dabef44d78b3d076b9c4eaa3f6, type: 3}
+  m_Name: SeqTest_RegionGated
+  m_EditorClassIdentifier: Infohazard.Sequencing::Infohazard.Sequencing.LevelManifestRegionEntry
+  _displayName: SeqTest_RegionGated
+  _regionID: 3
+  _levelID: 9001
+  _scene:
+    _path: Packages/com.infohazard.sequencing/Tests/PlayMode/Scenes/SeqTest_RegionGated.unity
+    _guid: 0027029e45ecb094bb4264f7703613cf
+  _loadedByDefault: 0
+  _alwaysLoaded: 0

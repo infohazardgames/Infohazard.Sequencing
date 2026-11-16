@@ -1,0 +1,36 @@
+{
+    "name": "Infohazard.Sequencing.Tests.Editor",
+    "rootNamespace": "Infohazard.Sequencing.Tests.Editor",
+    "references": [
+        "Infohazard.Core",
+        "Infohazard.Core.Editor",
+        "Infohazard.Core.Addressables",
+        "Infohazard.Sequencing",
+        "Infohazard.Sequencing.Editor",
+        "Infohazard.Sequencing.Tests.PlayMode",
+        "UniTask",
+        "Unity.Addressables",
+        "Unity.Addressables.Editor",
+        "Unity.ResourceManager",
+        "Unity.TextMeshPro",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll",
+        "Moq.dll",
+        "Newtonsoft.Json.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

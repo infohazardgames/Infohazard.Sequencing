@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fbd9600819be4463a902c26a4de93a13, type: 3}
+  m_Name: SeqTest_PLevel
+  m_EditorClassIdentifier: Infohazard.Sequencing::Infohazard.Sequencing.LevelManifestLevelEntry
+  _displayName: SeqTest_PLevel
+  _levelID: 9101
+  _scene:
+    _path: Packages/com.infohazard.sequencing/Tests/PlayMode/Scenes/SeqTest_PLevel.unity
+    _guid: 096c4232cbae0594db7e87d7f083174b
+  _regions:
+  - {fileID: 11400000, guid: 039e2cec4fa886740b049e6e0c54f551, type: 2}
+  - {fileID: 11400000, guid: 80502ad3c5df1fe4094fd5e1cc129505, type: 2}
+  _customInitialRegionsLogic: {fileID: 0}
