@@ -32,26 +32,25 @@ namespace Infohazard.Sequencing {
         [SerializeField] private Formatting _formatting;
         
         private JsonSerializer _serializer;
-        
-        private void Awake() {
-            _serializer = new JsonSerializer {
-                Formatting = _formatting,
-                ContractResolver = new DefaultContractResolver {
-                    IgnoreSerializableAttribute = false,
-                },
-                Converters = {
-                    new Vector2Converter(),
-                    new Vector3Converter(),
-                    new QuaternionConverter(),
-                },
-            };
-        }
+
+        // Created on first use rather than in Awake, so it works even when another object's Awake uses it first.
+        private JsonSerializer JsonSerializer => _serializer ??= new JsonSerializer {
+            Formatting = _formatting,
+            ContractResolver = new DefaultContractResolver {
+                IgnoreSerializableAttribute = false,
+            },
+            Converters = {
+                new Vector2Converter(),
+                new Vector3Converter(),
+                new QuaternionConverter(),
+            },
+        };
 
         public override void Write(Stream stream, object data) {
             using StreamWriter sw = new StreamWriter(stream);
             using JsonWriter writer = new JsonTextWriter(sw);
             
-            _serializer.Serialize(writer, data);
+            JsonSerializer.Serialize(writer, data);
         }
 
         public override bool Read<T>(Stream stream, out T data) {
@@ -59,7 +58,7 @@ namespace Infohazard.Sequencing {
             using JsonReader reader = new JsonTextReader(sr);
 
             try {
-                data = _serializer.Deserialize<T>(reader);
+                data = JsonSerializer.Deserialize<T>(reader);
                 return true;
             } catch (Exception ex) {
                 Debug.LogException(ex);
@@ -73,16 +72,25 @@ namespace Infohazard.Sequencing {
         }
 
         public override bool IntermediateToObject<T>(object intermediate, out T data) {
-            switch (intermediate) {
-                case T t:
-                    data = t;
-                    return true;
-                case JContainer container:
-                    data = container.ToObject<T>(_serializer);
-                    return true;
-                default:
-                    data = default;
-                    return false;
+            if (intermediate is T t) {
+                data = t;
+                return true;
+            }
+
+            if (intermediate == null) {
+                data = default;
+                return false;
+            }
+
+            // After a load, custom data is a JObject (for objects) or a primitive such as long or double (for
+            // numbers), so convert through a JToken to get the requested type.
+            try {
+                JToken token = intermediate as JToken ?? JToken.FromObject(intermediate, JsonSerializer);
+                data = token.ToObject<T>(JsonSerializer);
+                return data is not null;
+            } catch (Exception) {
+                data = default;
+                return false;
             }
         }
     }

@@ -41,17 +41,35 @@ namespace Infohazard.Sequencing {
             set {
                 if (value == _pgo.Region) return;
 
+                // No region means the level itself.
+                Scene targetScene;
+                Transform targetParent;
+                if (value) {
+                    if (value is not PersistedRegionRoot) {
+                        Debug.LogError($"{name} can only move to persisted regions, not {value.name}.", this);
+                        return;
+                    }
+
+                    targetScene = value.gameObject.scene;
+                    targetParent = value.DynamicObjectRoot;
+                } else if (LevelRoot.Current) {
+                    targetScene = LevelRoot.Current.gameObject.scene;
+                    targetParent = LevelRoot.Current.DynamicObjectRoot;
+                } else {
+                    Debug.LogError($"{name} can't leave its region because no level is loaded.", this);
+                    return;
+                }
+
                 RegionRoot oldRegion = _pgo.Region;
                 if (_pgo.Initialized) {
-                    _pgo.TransitionToRegion((PersistedRegionRoot)value);
+                    _pgo.TransitionToRegion(value as PersistedRegionRoot);
                 }
 
                 Transform t = _pgo.transform;
-                
                 t.parent = null;
-                SceneManager.MoveGameObjectToScene(_pgo.gameObject, value.gameObject.scene);
-                t.parent = value.DynamicObjectRoot;
-                
+                SceneManager.MoveGameObjectToScene(_pgo.gameObject, targetScene);
+                t.parent = targetParent;
+
                 CurrentRegionChanged?.Invoke(oldRegion, value);
             }
         }

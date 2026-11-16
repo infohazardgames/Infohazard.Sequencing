@@ -40,7 +40,13 @@ namespace Infohazard.Sequencing {
         public event Action Unloading;
         
         public virtual async UniTask Initialize() {
-            await LevelRoot.Current.RegisterRegion(this);
+            LevelRoot level = LevelRoot.Current;
+            if (!level) {
+                Debug.LogError($"Trying to initialize RegionRoot {name} with no LevelRoot loaded.", this);
+                return;
+            }
+
+            await level.RegisterRegion(this);
             Initialized = true;
         }
 

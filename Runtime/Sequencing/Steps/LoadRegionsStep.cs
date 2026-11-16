@@ -58,8 +58,8 @@ namespace Infohazard.Sequencing {
                 }),
                 _enableImmediately, _sceneGroup);
 
-            LoadingScreen loading = LoadingScreen.Instance;
-            if (loading != null && regionOperations.IsValid) {
+            // The loading screen is optional.
+            if (LoadingScreen.TryGetInstance(out LoadingScreen loading) && regionOperations.IsValid) {
                 loading.SetText("Loading Regions...");
                 loading.SetProgressSource(regionOperations.PartialOperation);
             }

@@ -64,10 +64,16 @@ namespace Infohazard.Sequencing {
             State = value;
             if (State == null) {
                 Debug.LogError($"State could not be loaded for type {GetType().Name}.");
-            } else if (State.Initialized) {
-                LoadState();
             } else {
-                LoadDefaultState();
+                if (State.Initialized) {
+                    LoadState();
+                } else {
+                    LoadDefaultState();
+                }
+
+                // Mark it initialized (like PersistedComponent does) so the saved state is loaded next time
+                // instead of the defaults.
+                State.Initialized = true;
             }
         }
         

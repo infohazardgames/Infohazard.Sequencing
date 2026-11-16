@@ -28,8 +28,7 @@ namespace Infohazard.Sequencing {
         [SerializeField] private string _specificSaveName;
 
         public void Activate() {
-            var ssm = SaveStateManager.Instance;
-            if (!ssm) {
+            if (!SaveStateManager.TryGetInstance(out _)) {
                 Debug.LogError("SaveTrigger requires SaveStateManager.");
                 return;
             }

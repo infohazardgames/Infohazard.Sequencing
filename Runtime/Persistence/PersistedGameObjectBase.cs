@@ -48,8 +48,17 @@ namespace Infohazard.Sequencing {
         }
 
         protected void InitializeComponents() {
+            // Components are keyed by path and type. Further components of the same type at the same path get an
+            // index suffix, so they don't share state; the first keeps the plain key so existing saves still load.
+            // Local, because a component's LoadState can spawn and initialize another persisted object.
+            Dictionary<string, int> idCounts = new Dictionary<string, int>(Components.Count);
             foreach (IPersistedComponent component in Components) {
-                component.Initialize(this, SaveData, new ComponentID(transform, (Component) component).ToString());
+                string id = new ComponentID(transform, (Component) component).ToString();
+                idCounts.TryGetValue(id, out int count);
+                idCounts[id] = count + 1;
+                if (count > 0) id = $"{id}#{count}";
+
+                component.Initialize(this, SaveData, id);
             }
         }
 

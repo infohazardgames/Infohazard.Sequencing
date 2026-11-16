@@ -30,6 +30,17 @@ namespace Infohazard.Sequencing {
     public class LevelRoot : MonoBehaviour {
         public static LevelRoot Current { get; private set; }
 
+        /// <summary>
+        /// Reset all static state of LevelRoot to its initial values.
+        /// </summary>
+        /// <remarks>
+        /// This exists for unit tests and editor tooling (such as entering play mode without a domain reload).
+        /// It typically should not be called from game code.
+        /// </remarks>
+        public static void ResetStaticState() {
+            Current = null;
+        }
+
         [SerializeField] private LevelManifestLevelEntry _manifestEntry;
         [SerializeField] private Transform _dynamicObjectRoot;
         [SerializeField] private DebugTeleportPoint[] _debugTeleportPoints;
@@ -55,8 +66,6 @@ namespace Infohazard.Sequencing {
         }
 
         public virtual UniTask Initialize() {
-            Unloading?.Invoke();
-
             if (Current) {
                 Debug.LogError("Trying to initialize a LevelRoot when one is already active!");
             } else {
@@ -69,6 +78,7 @@ namespace Infohazard.Sequencing {
         }
 
         public virtual void Cleanup() {
+            Unloading?.Invoke();
             Initialized = false;
             if (Current == this) {
                 Current = null;

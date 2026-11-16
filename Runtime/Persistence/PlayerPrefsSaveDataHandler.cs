@@ -2,225 +2,278 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using UnityEngine;
 
 namespace Infohazard.Sequencing {
+    /// <summary>
+    /// Stores all save data as a single JSON string in PlayerPrefs.
+    /// </summary>
+    /// <remarks>
+    /// Behaves like <see cref="FileSaveDataHandler"/>: getting missing data returns defaults without creating
+    /// anything, returned objects are copies (changes only persist when passed to a Set method), and data that
+    /// can't be serialized is rejected without affecting what is already saved.
+    /// </remarks>
     public class PlayerPrefsSaveDataHandler : SaveDataHandler {
         [SerializeField]
         private string _dataPrefName = "SaveData";
 
+        // Mirrors what is saved in PlayerPrefs. Only ever holds data that has serialized successfully.
         private GlobalSaveDataPair _globalData;
         private JsonSerializer _jsonSerializer;
 
-        private void Awake() {
-            _jsonSerializer = new JsonSerializer {
-                Formatting = Formatting.None,
-                ContractResolver = new DefaultContractResolver {
-                    IgnoreSerializableAttribute = false,
-                },
-                Converters = {
-                    new Vector2Converter(),
-                    new Vector3Converter(),
-                    new QuaternionConverter(),
-                },
-            };
-        }
+        private JsonSerializer JsonSerializer => _jsonSerializer ??= new JsonSerializer {
+            Formatting = Formatting.None,
+            ContractResolver = new DefaultContractResolver {
+                IgnoreSerializableAttribute = false,
+            },
+            Converters = {
+                new Vector2Converter(),
+                new Vector3Converter(),
+                new QuaternionConverter(),
+            },
+        };
+
+        private GlobalSaveDataPair GlobalData => _globalData ??= LoadGlobalDataPair();
+
+        #region Global
 
         public override GlobalSaveData GetGlobalSaveData(Serializer serializer) {
-            _globalData ??= GetGlobalDataPair();
-            return _globalData.Data;
+            return CopyData(GlobalData.Data) ?? new GlobalSaveData();
         }
 
         public override void SetGlobalSaveData(Serializer serializer, GlobalSaveData globalData) {
-            _globalData ??= GetGlobalDataPair();
-            _globalData.Data = globalData;
+            if (!TryCopyForSaving(globalData, out GlobalSaveData copy)) return;
+            GlobalData.Data = copy;
             Save();
         }
 
         public override void ClearGlobalSaveData() {
             _globalData = null;
             PlayerPrefs.DeleteKey(_dataPrefName);
+            PlayerPrefs.Save();
         }
 
+        #endregion
+
+        #region Profile
+
         public override IEnumerable<string> GetAvailableProfiles() {
-            _globalData ??= GetGlobalDataPair();
-            return _globalData.Profiles.Select(p => p.Data.ProfileName);
+            return GlobalData.Profiles.Select(p => p.Data.ProfileName).ToList();
         }
 
         public override ProfileSaveData GetProfileSaveData(Serializer serializer, string profile) {
-            return GetProfileSaveDataPair(profile).Data;
+            return CopyData(FindProfile(profile)?.Data) ?? new ProfileSaveData {
+                ProfileName = profile,
+            };
         }
 
         public override void SetProfileSaveData(Serializer serializer, string profile, ProfileSaveData profileData) {
-            ProfileSaveDataPair pair = GetProfileSaveDataPair(profile);
-            pair.Data = profileData;
+            if (!TryCopyForSaving(profileData, out ProfileSaveData copy)) return;
+            GetOrCreateProfile(profile).Data = copy;
             Save();
         }
 
         public override void ClearProfileSaveData(string profile) {
-            _globalData ??= GetGlobalDataPair();
-            int index = _globalData.Profiles.FindIndex(p => p.Data.ProfileName == profile);
-            if (index < 0) return;
-
-            _globalData.Profiles.RemoveAt(index);
+            if (GlobalData.Profiles.RemoveAll(p => p.Data.ProfileName == profile) == 0) return;
             Save();
         }
 
-        public override void CopyProfileSaveData(string sourceProfile, string destProfile) {
-            ProfileSaveDataPair sourcePair = GetProfileSaveDataPair(sourceProfile);
-            ProfileSaveDataPair copy = CopyData(sourcePair);
-            copy.Data.ProfileName = destProfile;
+        public override void CopyProfileSaveData(Serializer serializer, string sourceProfile, string destProfile) {
+            ProfileSaveDataPair source = FindProfile(sourceProfile);
+            GlobalData.Profiles.RemoveAll(p => p.Data.ProfileName == destProfile);
 
-            int index = _globalData.Profiles.FindIndex(p => p.Data.ProfileName == destProfile);
-            if (index < 0) {
-                _globalData.Profiles.Add(copy);
-            } else {
-                _globalData.Profiles[index] = copy;
+            // Copying a profile that doesn't exist leaves the destination empty, like the file handler.
+            if (source != null) {
+                ProfileSaveDataPair copy = CopyData(source);
+                copy.Data.ProfileName = destProfile;
+                GlobalData.Profiles.Add(copy);
             }
 
             Save();
         }
 
+        #endregion
+
+        #region State
+
         public override IEnumerable<string> GetAvailableStates(string profile) {
-            ProfileSaveDataPair pair = GetProfileSaveDataPair(profile);
-            return pair.States.Select(s => s.Data.StateName);
+            return FindProfile(profile)?.States.Select(s => s.Data.StateName).ToList() ??
+                   Enumerable.Empty<string>();
         }
 
         public override StateSaveData GetStateSaveData(Serializer serializer, string profile, string state) {
-            return GetStateSaveDataPair(profile, state).Data;
+            return CopyData(FindState(profile, state)?.Data) ?? new StateSaveData {
+                StateName = state,
+            };
         }
 
         public override void SetStateSaveData(Serializer serializer, string profile, string state,
                                               StateSaveData stateData) {
-            StateSaveDataPair pair = GetStateSaveDataPair(profile, state);
-            pair.Data = stateData;
+            if (!TryCopyForSaving(stateData, out StateSaveData copy)) return;
+            GetOrCreateState(profile, state).Data = copy;
             Save();
         }
 
         public override void ClearStateSaveData(string profile, string state) {
-            ProfileSaveDataPair profilePair = GetProfileSaveDataPair(profile);
-            int index = profilePair.States.FindIndex(s => s.Data.StateName == state);
-            if (index < 0) return;
-
-            profilePair.States.RemoveAt(index);
+            ProfileSaveDataPair profilePair = FindProfile(profile);
+            if (profilePair == null || profilePair.States.RemoveAll(s => s.Data.StateName == state) == 0) return;
             Save();
         }
 
-        public override void CopyStateSaveData(string profile, string sourceState, string destState) {
-            StateSaveDataPair sourcePair = GetStateSaveDataPair(profile, sourceState);
-            StateSaveDataPair copy = CopyData(sourcePair);
-            copy.Data.StateName = destState;
+        public override void CopyStateSaveData(Serializer serializer, string profile, string sourceState,
+                                               string destState) {
+            StateSaveDataPair source = FindState(profile, sourceState);
+            FindProfile(profile)?.States.RemoveAll(s => s.Data.StateName == destState);
 
-            ProfileSaveDataPair profilePair = GetProfileSaveDataPair(profile);
-            int index = profilePair.States.FindIndex(s => s.Data.StateName == destState);
-            if (index < 0) {
-                profilePair.States.Add(copy);
-            } else {
-                profilePair.States[index] = copy;
+            // Copying a state that doesn't exist leaves the destination empty, like the file handler.
+            if (source != null) {
+                StateSaveDataPair copy = CopyData(source);
+                copy.Data.StateName = destState;
+                GetOrCreateProfile(profile).States.Add(copy);
             }
 
             Save();
         }
 
+        #endregion
+
+        #region Level
+
         public override IEnumerable<int> GetAvailableLevels(string profile, string state) {
-            StateSaveDataPair pair = GetStateSaveDataPair(profile, state);
-            return pair.Levels.Select(l => l.Data.LevelIndex);
+            return FindState(profile, state)?.Levels.Select(l => l.Data.LevelIndex).ToList() ??
+                   Enumerable.Empty<int>();
         }
 
         public override LevelSaveData GetLevelSaveData(Serializer serializer, string profile, string state, int level) {
-            return GetLevelSaveDataPair(profile, state, level).Data;
+            return CopyData(FindLevel(profile, state, level)?.Data) ?? new LevelSaveData {
+                LevelIndex = level,
+            };
         }
 
         public override void SetLevelSaveData(Serializer serializer, string profile, string state, int level,
                                               LevelSaveData levelData) {
-            LevelSaveDataPair pair = GetLevelSaveDataPair(profile, state, level);
-            pair.Data = levelData;
+            if (!TryCopyForSaving(levelData, out LevelSaveData copy)) return;
+            GetOrCreateLevel(profile, state, level).Data = copy;
             Save();
         }
 
         public override void ClearLevelSaveData(string profile, string state, int level) {
-            StateSaveDataPair statePair = GetStateSaveDataPair(profile, state);
-            int index = statePair.Levels.FindIndex(l => l.Data.LevelIndex == level);
-            if (index < 0) return;
-
-            statePair.Levels.RemoveAt(index);
+            StateSaveDataPair statePair = FindState(profile, state);
+            if (statePair == null || statePair.Levels.RemoveAll(l => l.Data.LevelIndex == level) == 0) return;
             Save();
         }
 
+        #endregion
+
+        #region Region
+
         public override IEnumerable<int> GetAvailableRegions(string profile, string state, int level) {
-            LevelSaveDataPair pair = GetLevelSaveDataPair(profile, state, level);
-            return pair.Regions.Select(r => r.RegionIndex);
+            return FindLevel(profile, state, level)?.Regions.Select(r => r.RegionIndex).ToList() ??
+                   Enumerable.Empty<int>();
         }
 
         public override RegionSaveData GetRegionSaveData(Serializer serializer, string profile, string state, int level,
                                                          int region) {
-            LevelSaveDataPair pair = GetLevelSaveDataPair(profile, state, level);
-            return pair.Regions.FirstOrDefault(r => r.RegionIndex == region);
+            RegionSaveData data = FindLevel(profile, state, level)?.Regions
+                                                                   .FirstOrDefault(r => r.RegionIndex == region);
+            return CopyData(data) ?? new RegionSaveData {
+                RegionIndex = region,
+            };
         }
 
         public override void SetRegionSaveData(Serializer serializer, string profile, string state, int level,
-                                               int region,
-                                               RegionSaveData regionData) {
-            LevelSaveDataPair levelPair = GetLevelSaveDataPair(profile, state, level);
-            int index = levelPair.Regions.FindIndex(r => r.RegionIndex == region);
+                                               int region, RegionSaveData regionData) {
+            if (!TryCopyForSaving(regionData, out RegionSaveData copy)) return;
+            List<RegionSaveData> regions = GetOrCreateLevel(profile, state, level).Regions;
+            int index = regions.FindIndex(r => r.RegionIndex == region);
             if (index < 0) {
-                levelPair.Regions.Add(regionData);
+                regions.Add(copy);
             } else {
-                levelPair.Regions[index] = regionData;
+                regions[index] = copy;
             }
+
             Save();
         }
 
         public override void ClearRegionSaveData(string profile, string state, int level, int region) {
-            LevelSaveDataPair levelPair = GetLevelSaveDataPair(profile, state, level);
-            int index = levelPair.Regions.FindIndex(r => r.RegionIndex == region);
-            if (index < 0) return;
-
-            levelPair.Regions.RemoveAt(index);
+            LevelSaveDataPair levelPair = FindLevel(profile, state, level);
+            if (levelPair == null || levelPair.Regions.RemoveAll(r => r.RegionIndex == region) == 0) return;
             Save();
         }
 
+        #endregion
+
         #region Private Methods
 
-        private T CopyData<T>(T data) {
+        private T CopyData<T>(T data) where T : class {
+            if (data == null) return null;
+
             using StringWriter stringWriter = new();
-            _jsonSerializer.Serialize(stringWriter, data);
+            JsonSerializer.Serialize(stringWriter, data);
 
             using StringReader stringReader = new(stringWriter.ToString());
             using JsonTextReader jsonReader = new(stringReader);
-            return _jsonSerializer.Deserialize<T>(jsonReader);
+            return JsonSerializer.Deserialize<T>(jsonReader);
+        }
+
+        /// <summary>
+        /// Copy data passed to a Set method, so later changes by the caller aren't saved, and data that can't be
+        /// serialized is rejected before it reaches the stored data.
+        /// </summary>
+        private bool TryCopyForSaving<T>(T data, out T copy) where T : class {
+            try {
+                copy = CopyData(data);
+                return true;
+            } catch (Exception ex) {
+                Debug.LogException(ex);
+                copy = null;
+                return false;
+            }
         }
 
         private void Save() {
             using StringWriter stringWriter = new();
-            _jsonSerializer.Serialize(stringWriter, _globalData);
+            JsonSerializer.Serialize(stringWriter, GlobalData);
             PlayerPrefs.SetString(_dataPrefName, stringWriter.ToString());
+            PlayerPrefs.Save();
         }
 
-        private GlobalSaveDataPair GetGlobalDataPair() {
+        private GlobalSaveDataPair LoadGlobalDataPair() {
             string json = PlayerPrefs.GetString(_dataPrefName, null);
-            if (string.IsNullOrEmpty(json)) {
-                return new GlobalSaveDataPair {
-                    Data = new GlobalSaveData(),
-                    Profiles = new List<ProfileSaveDataPair>(),
-                };
+            GlobalSaveDataPair pair = null;
+            if (!string.IsNullOrEmpty(json)) {
+                try {
+                    using StringReader stringReader = new(json);
+                    using JsonTextReader jsonReader = new(stringReader);
+                    pair = JsonSerializer.Deserialize<GlobalSaveDataPair>(jsonReader);
+                } catch (Exception ex) {
+                    Debug.LogException(ex);
+                }
             }
 
-            using StringReader stringReader = new(json);
-            using JsonTextReader jsonReader = new(stringReader);
-            return _jsonSerializer.Deserialize<GlobalSaveDataPair>(jsonReader);
+            pair ??= new GlobalSaveDataPair();
+            pair.Data ??= new GlobalSaveData();
+            pair.Profiles ??= new List<ProfileSaveDataPair>();
+            return pair;
         }
 
-        private ProfileSaveDataPair GetProfileSaveDataPair(string profile) {
-            _globalData ??= GetGlobalDataPair();
+        private ProfileSaveDataPair FindProfile(string profile) {
+            return GlobalData.Profiles.FirstOrDefault(p => p.Data.ProfileName == profile);
+        }
 
-            ProfileSaveDataPair profileData = _globalData.Profiles.FirstOrDefault(p => p.Data.ProfileName == profile);
-            if (profileData != null) {
-                return profileData;
-            }
+        private StateSaveDataPair FindState(string profile, string state) {
+            return FindProfile(profile)?.States.FirstOrDefault(s => s.Data.StateName == state);
+        }
+
+        private LevelSaveDataPair FindLevel(string profile, string state, int level) {
+            return FindState(profile, state)?.Levels.FirstOrDefault(l => l.Data.LevelIndex == level);
+        }
+
+        private ProfileSaveDataPair GetOrCreateProfile(string profile) {
+            ProfileSaveDataPair profileData = FindProfile(profile);
+            if (profileData != null) return profileData;
 
             profileData = new ProfileSaveDataPair {
                 Data = new ProfileSaveData {
@@ -228,18 +281,14 @@ namespace Infohazard.Sequencing {
                 },
                 States = new List<StateSaveDataPair>(),
             };
-            _globalData.Profiles.Add(profileData);
-
+            GlobalData.Profiles.Add(profileData);
             return profileData;
         }
 
-        private StateSaveDataPair GetStateSaveDataPair(string profile, string state) {
-            ProfileSaveDataPair profileData = GetProfileSaveDataPair(profile);
-
+        private StateSaveDataPair GetOrCreateState(string profile, string state) {
+            ProfileSaveDataPair profileData = GetOrCreateProfile(profile);
             StateSaveDataPair stateData = profileData.States.FirstOrDefault(s => s.Data.StateName == state);
-            if (stateData != null) {
-                return stateData;
-            }
+            if (stateData != null) return stateData;
 
             stateData = new StateSaveDataPair {
                 Data = new StateSaveData {
@@ -248,17 +297,13 @@ namespace Infohazard.Sequencing {
                 Levels = new List<LevelSaveDataPair>(),
             };
             profileData.States.Add(stateData);
-
             return stateData;
         }
 
-        private LevelSaveDataPair GetLevelSaveDataPair(string profile, string state, int level) {
-            StateSaveDataPair stateData = GetStateSaveDataPair(profile, state);
-
+        private LevelSaveDataPair GetOrCreateLevel(string profile, string state, int level) {
+            StateSaveDataPair stateData = GetOrCreateState(profile, state);
             LevelSaveDataPair levelData = stateData.Levels.FirstOrDefault(l => l.Data.LevelIndex == level);
-            if (levelData != null) {
-                return levelData;
-            }
+            if (levelData != null) return levelData;
 
             levelData = new LevelSaveDataPair {
                 Data = new LevelSaveData {
@@ -267,23 +312,7 @@ namespace Infohazard.Sequencing {
                 Regions = new List<RegionSaveData>(),
             };
             stateData.Levels.Add(levelData);
-
             return levelData;
-        }
-
-        private RegionSaveData GetRegionSaveDataPair(string profile, string state, int level, int region) {
-            LevelSaveDataPair levelData = GetLevelSaveDataPair(profile, state, level);
-
-            RegionSaveData regionData = levelData.Regions.FirstOrDefault(r => r.RegionIndex == region);
-            if (regionData != null) {
-                return regionData;
-            }
-
-            regionData = new RegionSaveData {
-                RegionIndex = region,
-            };
-            levelData.Regions.Add(regionData);
-            return regionData;
         }
 
         private class GlobalSaveDataPair {

@@ -95,20 +95,25 @@ namespace Infohazard.Sequencing {
             _sceneLoadingStates.TryGetValue(sceneName, out SceneState state);
 
             if (state.Type == SceneStateType.Loading || state.Type == SceneStateType.Cancelled) {
-                foreach (SceneLoadingOperation loadingScene in groupInfo.LoadingScenes) {
-                    if (loadingScene.SceneName != sceneName) continue;
-                    loadingScene.IsCancelled = false;
-                    loadingScene.SetActiveOnComplete = setActiveScene;
-                    loadingScene.Operation.allowSceneActivation = autoActivate;
-                    _sceneLoadingStates[sceneName] = new SceneState {
-                        Type = SceneStateType.Loading,
-                        LoadingOperation = loadingScene,
-                    };
-                    return new SceneLoadOperations {
-                        FullOperation = loadingScene,
-                        PartialOperation = loadingScene.PartialOperation,
-                    };
+                // An in-progress load is shared, whichever group started it, so the scene is never loaded twice.
+                SceneLoadingOperation loadingScene = FindLoadingOperation(sceneName);
+                if (loadingScene == null) {
+                    // Being initialized by InitializeLoadedScene, which isn't a load we can rejoin.
+                    return default;
                 }
+
+                loadingScene.IsCancelled = false;
+                loadingScene.SetActiveOnComplete = setActiveScene;
+                if (loadingScene.Operation != null) loadingScene.Operation.allowSceneActivation = autoActivate;
+                _sceneLoadingStates[sceneName] = new SceneState {
+                    Type = SceneStateType.Loading,
+                    LoadingOperation = loadingScene,
+                    LoadedInfo = state.LoadedInfo,
+                };
+                return new SceneLoadOperations {
+                    FullOperation = loadingScene,
+                    PartialOperation = loadingScene.PartialOperation,
+                };
             }
 
             if (state.Type == SceneStateType.Loaded) {
@@ -153,7 +158,8 @@ namespace Infohazard.Sequencing {
                     Operation = sceneOperation,
                 },
             };
-            op.Task = LoadSceneAsync(op);
+            // Shared, so any number of callers can wait on the same load.
+            op.Task = Share(LoadSceneAsync(op));
 
             _sceneLoadingStates[sceneName] = new SceneState {
                 Type = SceneStateType.Loading,
@@ -195,7 +201,8 @@ namespace Infohazard.Sequencing {
             if (!scene.isLoaded) {
                 Debug.LogError($"Unexpected: scene {operation.SceneName} not loaded after operation complete.");
                 operation.GroupInfo.LoadingScenes.Remove(operation);
-                _sceneLoadingStates[scene.name] = new SceneState {
+                // The scene isn't valid here, so key by the operation's scene name.
+                _sceneLoadingStates[operation.SceneName] = new SceneState {
                     Type = SceneStateType.Unloaded,
                     LoadedInfo = null,
                 };
@@ -255,7 +262,43 @@ namespace Infohazard.Sequencing {
                 if (operation.SetActiveOnComplete) {
                     SceneManager.SetActiveScene(scene);
                 }
+            } else {
+                // Cancelled while the roots were initializing: undo their registration before the scene is
+                // unloaded, the same as unloading a loaded scene would.
+                if (sceneInfo.Level) sceneInfo.Level.Cleanup();
+                if (sceneInfo.Region) sceneInfo.Region.Cleanup();
             }
+        }
+
+        /// <summary>
+        /// Wrap a task so it can be awaited any number of times, even while pending. A UniTask from an async method
+        /// can only be awaited once, and Preserve() only lifts that once the task has completed.
+        /// </summary>
+        private static UniTask Share(UniTask task) {
+            UniTaskCompletionSource source = new UniTaskCompletionSource();
+            Complete(task, source).Forget();
+            return source.Task;
+
+            static async UniTaskVoid Complete(UniTask task, UniTaskCompletionSource source) {
+                try {
+                    await task;
+                    source.TrySetResult();
+                } catch (OperationCanceledException ex) {
+                    source.TrySetCanceled(ex.CancellationToken);
+                } catch (Exception ex) {
+                    source.TrySetException(ex);
+                }
+            }
+        }
+
+        private SceneLoadingOperation FindLoadingOperation(string sceneName) {
+            foreach (SceneGroupInfo groupInfo in _sceneGroups.Values) {
+                foreach (SceneLoadingOperation loadingScene in groupInfo.LoadingScenes) {
+                    if (loadingScene.SceneName == sceneName) return loadingScene;
+                }
+            }
+
+            return null;
         }
 
         private IProgressSource UnloadSceneInternal(Scene scene, SceneGroupInfo groupInfo) {
@@ -277,7 +320,7 @@ namespace Infohazard.Sequencing {
                 SceneName = scene.name,
                 GroupInfo = groupInfo,
             };
-            unloadingOperation.Task = UnloadSceneInternalAsync(unloadingOperation);
+            unloadingOperation.Task = Share(UnloadSceneInternalAsync(unloadingOperation));
 
             _sceneLoadingStates[scene.name] = new SceneState {
                 Type = SceneStateType.Unloading,

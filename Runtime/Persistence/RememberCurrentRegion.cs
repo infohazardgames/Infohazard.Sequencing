@@ -40,7 +40,7 @@ namespace Infohazard.Sequencing {
                 RegionRoot oldRegion = _region;
                 _region = value;
                 CurrentRegionChanged?.Invoke(oldRegion, value);
-                State.RegionID = _region.RegionIndex;
+                if (State != null) State.RegionID = _region ? _region.RegionIndex : -1;
             }
         }
 

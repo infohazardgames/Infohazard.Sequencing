@@ -60,7 +60,7 @@ namespace Infohazard.Sequencing {
                 if (Equals(_customData, value)) return;
                 bool b = Subscribed;
                 Subscribed = false;
-                _customData = value.ToDictionary(pair => pair.Key, pair => pair.Value);
+                _customData = value?.ToDictionary(pair => pair.Key, pair => pair.Value);
                 Subscribed = b;
             }
         }
@@ -104,13 +104,15 @@ namespace Infohazard.Sequencing {
         public void SetCustomData(string key, object value) {
             _customData ??= new Dictionary<string, object>();
 
-            if (_customData.TryGetValue(key, out object prevValue) && prevValue is PersistedData prevData) {
+            // Children are only hooked while this object has listeners (see Subscribe/Unsubscribe).
+            if (Subscribed && _customData.TryGetValue(key, out object prevValue) &&
+                prevValue is PersistedData prevData) {
                 prevData.StateChanged -= CustomData_StateChanged;
             }
-            
+
             _customData[key] = value;
-            
-            if (value is PersistedData data) {
+
+            if (Subscribed && value is PersistedData data) {
                 data.StateChanged += CustomData_StateChanged;
             }
         }
@@ -203,7 +205,7 @@ namespace Infohazard.Sequencing {
         }
 
         protected override void Unsubscribe() {
-            base.Subscribe();
+            base.Unsubscribe();
             Objects.StateChanged -= Objects_StateChanged;
         }
 
@@ -280,7 +282,8 @@ namespace Infohazard.Sequencing {
         }
 
         public ObjectSaveData RegisterNewDynamicObject(string prefabID, ulong? instanceID = null) {
-            if (!instanceID.HasValue || _objects.ContainsKey(instanceID.Value)) {
+            // 0 means "no ID", so it is never used.
+            if (!instanceID.HasValue || instanceID.Value == 0 || _objects.ContainsKey(instanceID.Value)) {
                 instanceID = GetUnusedInstanceID();
             }
             

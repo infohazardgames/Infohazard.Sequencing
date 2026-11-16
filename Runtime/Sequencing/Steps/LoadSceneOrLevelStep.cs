@@ -47,8 +47,8 @@ namespace Infohazard.Sequencing {
             
             LevelManifestLevelEntry level = LevelManifest.Instance.GetLevelWithSceneNameOrPath(sceneToLoad);
 
-            var loading = LoadingScreen.Instance;
-            if (loading != null && operation.IsValid) {
+            // The loading screen is optional.
+            if (LoadingScreen.TryGetInstance(out LoadingScreen loading) && operation.IsValid) {
                 loading.SetProgressSource(operation.PartialOperation);
                 loading.SetText(level ? "Loading Level..." : "Loading...");
             }

@@ -42,7 +42,14 @@ namespace Infohazard.Sequencing {
 
         public override UniTask Initialize() {
             UniTask task = base.Initialize();
-            SaveData = PersistenceManager.Instance.GetLevelData(ManifestEntry.LevelID);
+
+            // Another level is already current (the base class logged an error), so don't take over save data.
+            if (LevelRoot.Current != this) return task;
+
+            // Without loaded state data there is nowhere to save to (GetLevelData logs an error); keep the level
+            // working with unsaved data instead of failing.
+            SaveData = PersistenceManager.Instance.GetLevelData(ManifestEntry.LevelID) ??
+                       new LevelSaveData { LevelIndex = ManifestEntry.LevelID };
             SaveData.StateChanged += SaveData_StateChanged;
             return task;
         }
@@ -83,7 +90,7 @@ namespace Infohazard.Sequencing {
         }
 
         public override void Cleanup() {
-            SaveData.StateChanged -= SaveData_StateChanged;
+            if (SaveData != null) SaveData.StateChanged -= SaveData_StateChanged;
             base.Cleanup();
         }
 
@@ -124,7 +131,8 @@ namespace Infohazard.Sequencing {
         public RegionSaveData GetOrLoadRegionData(LevelManifestRegionEntry region) {
             if (!_loadedRegionData.TryGetValue(region.RegionID, out LoadedRegionInfo info)) {
                 info = new LoadedRegionInfo {
-                    Data = PersistenceManager.Instance.GetRegionData(LevelIndex, region.RegionID),
+                    Data = PersistenceManager.Instance.GetRegionData(LevelIndex, region.RegionID) ??
+                           new RegionSaveData { RegionIndex = region.RegionID },
                 };
                 
                 info.Data.StateChanged += info.SetDirty;

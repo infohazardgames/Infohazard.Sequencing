@@ -52,7 +52,7 @@ namespace Infohazard.Sequencing {
                 else _transform.rotation = State.Rotation;
             }
             
-            if (_saveScale) transform.localScale = _transform.localScale;
+            if (_saveScale) _transform.localScale = State.Scale;
         }
 
         public override void WriteState() {

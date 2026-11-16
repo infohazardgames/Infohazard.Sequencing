@@ -60,6 +60,7 @@ namespace Infohazard.Sequencing {
                 if (!InitialSceneIsLoaded) {
                     Debug.LogError("Initial scene is not loaded!");
                     SceneControl.Quit();
+                    return;
                 }
 
                 ExecuteAndForget();

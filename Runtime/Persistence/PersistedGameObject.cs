@@ -89,6 +89,19 @@ namespace Infohazard.Sequencing {
         private static Dictionary<ulong, PersistedGameObject> _objects = new Dictionary<ulong, PersistedGameObject>();
         public static IReadOnlyDictionary<ulong, PersistedGameObject> Objects => _objects;
 
+        /// <summary>
+        /// Reset all static state of PersistedGameObject to its initial values.
+        /// </summary>
+        /// <remarks>
+        /// This exists for unit tests and editor tooling (such as entering play mode without a domain reload).
+        /// It typically should not be called from game code.
+        /// </remarks>
+        public static void ResetStaticState() {
+            _objects.Clear();
+            _transforms.Clear();
+            _rootGameObjects.Clear();
+        }
+
         protected override void Awake() {
             if (!Application.isPlaying) return;
             base.Awake();
@@ -197,15 +210,19 @@ namespace Infohazard.Sequencing {
                     : container.RegisterExistingObject(_instanceID, IsDynamicInstance)
                 : new ObjectSaveData(_instanceID, false, null);
             _instanceID = SaveData.InstanceID;
-            if (_objects.ContainsKey(_instanceID)) {
-                Debug.LogError($"Object with instanceID already exists, trying to replace with {name}.", this);
-            }
-
-            _objects[_instanceID] = this;
 
             if (SaveData.Destroyed) {
+                // Not registered: a destroyed copy (for example the static original of an object that moved to
+                // another region, which keeps its ID) must not take over the live object's ID.
                 Spawnable.Despawn(gameObject);
             } else {
+                if (_objects.TryGetValue(_instanceID, out PersistedGameObject existing) && existing &&
+                    existing != this) {
+                    Debug.LogError($"Object with instanceID already exists, trying to replace with {name}.", this);
+                }
+
+                _objects[_instanceID] = this;
+
                 if (!IsDynamicInstance && _immediatelyConvert) {
                     ConvertToDynamicInstance();
                 }
@@ -220,7 +237,17 @@ namespace Infohazard.Sequencing {
             Initialized = false;
             Level = null;
             Region = null;
-            _objects.Remove(_instanceID);
+            RemoveFromRegistry();
+        }
+
+        /// <summary>
+        /// Remove this object's registry entry, but only if the entry is this object.
+        /// </summary>
+        private void RemoveFromRegistry() {
+            if (_objects.TryGetValue(_instanceID, out PersistedGameObject registered) &&
+                ReferenceEquals(registered, this)) {
+                _objects.Remove(_instanceID);
+            }
         }
 
         private void ConvertToDynamicInstance() {
@@ -229,17 +256,24 @@ namespace Infohazard.Sequencing {
                 return;
             }
 
+            if (_prefabReference?.RuntimeKeyIsValid() != true) {
+                Debug.LogError($"Object {name} is set to convert to a dynamic instance, " +
+                               "but it doesn't have a valid prefab reference, so it stays static.", this);
+                return;
+            }
+
             PersistedObjectCollection container = Container;
             if (container == null) return;
             SaveData = container.ConvertStaticObjectToDynamic(_instanceID, _prefabReference.AssetGUID);
 
-            _objects.Remove(_instanceID);
+            RemoveFromRegistry();
             _instanceID = SaveData.InstanceID;
-            _objects.Add(_instanceID, this);
+            IsDynamicInstance = true;
+            _objects[_instanceID] = this;
         }
 
         public void RegisterDestroyed() {
-            _objects.Remove(_instanceID);
+            RemoveFromRegistry();
             Container?.RegisterObjectDestroyed(_instanceID);
         }
 
@@ -266,9 +300,9 @@ namespace Infohazard.Sequencing {
             SaveData = data;
             IsDynamicInstance = true;
             if (SaveData.InstanceID != _instanceID) {
-                _objects.Remove(_instanceID);
+                RemoveFromRegistry();
                 _instanceID = SaveData.InstanceID;
-                _objects.Add(_instanceID, this);
+                _objects[_instanceID] = this;
             }
 
             InitializeComponents();
@@ -307,11 +341,24 @@ namespace Infohazard.Sequencing {
         }
 
         private static async UniTask LoadDynamicObjectAsync(ObjectSaveData objectData, Scene scene, Transform parent) {
-            await AddressableUtil.SpawnAddressableAsync<PersistedGameObject>(objectData.DynamicPrefabID, new SpawnParams {
-                Parent = parent,
-                Scene = scene,
-                PersistedInstanceID = objectData.InstanceID,
-            });
+            // One bad entry (for example a prefab removed from Addressables since the save was made) must not stop
+            // the rest of the level from loading. The entry is kept, so it isn't lost if the prefab comes back.
+            try {
+                PersistedGameObject spawned = await AddressableUtil.SpawnAddressableAsync<PersistedGameObject>(
+                    objectData.DynamicPrefabID, new SpawnParams {
+                        Parent = parent,
+                        Scene = scene,
+                        PersistedInstanceID = objectData.InstanceID,
+                    });
+
+                if (!spawned) {
+                    Debug.LogError($"Failed to spawn saved dynamic object {objectData.InstanceID} " +
+                                   $"from prefab {objectData.DynamicPrefabID}.");
+                }
+            } catch (Exception ex) {
+                Debug.LogError($"Failed to spawn saved dynamic object {objectData.InstanceID} " +
+                               $"from prefab {objectData.DynamicPrefabID}: {ex}");
+            }
         }
 
         public static UniTask InitializeGameObjects(List<PersistedGameObject> list) {

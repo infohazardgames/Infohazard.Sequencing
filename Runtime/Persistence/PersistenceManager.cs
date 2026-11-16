@@ -145,8 +145,13 @@ namespace Infohazard.Sequencing {
         public void LoadProfileData(string profile) {
             ProfileSaveData data = GetProfileData(profile);
             if (data == null) return;
-            
-            LoadedProfileData = _dataHandler.GetProfileSaveData(_serializer, profile);
+
+            // The loaded state belongs to the previous profile, so it must not be saved into this one.
+            if (LoadedProfileData != null && LoadedProfileData.ProfileName != profile) {
+                UnloadStateData();
+            }
+
+            LoadedProfileData = data;
             LoadedProfileData.Initialized = true;
         }
 
@@ -179,6 +184,46 @@ namespace Infohazard.Sequencing {
             if (deletingCurrentProfile) {
                 UnloadProfileData();
             }
+
+            UpdateMostRecentProfileAfterDelete(profile);
+        }
+
+        /// <summary>
+        /// If the most recent profile was just deleted, point it at the remaining profile with the newest saved
+        /// state (profiles without states come last), or null if no profiles remain. The saved global data is
+        /// updated right away, since the deletion already happened on disk; the loaded global data is updated in
+        /// memory as well.
+        /// </summary>
+        private void UpdateMostRecentProfileAfterDelete(string deletedProfile) {
+            GlobalSaveData savedGlobal = _dataHandler.GetGlobalSaveData(_serializer);
+            bool savedNeedsUpdate = savedGlobal.MostRecentProfile == deletedProfile;
+            bool loadedNeedsUpdate = LoadedGlobalData != null && LoadedGlobalData.MostRecentProfile == deletedProfile;
+            if (!savedNeedsUpdate && !loadedNeedsUpdate) return;
+
+            string replacement = _dataHandler.GetAvailableProfiles()
+                                             .Select(name => (name, time: GetNewestSaveTime(name)))
+                                             .OrderByDescending(pair => pair.time)
+                                             .Select(pair => pair.name)
+                                             .FirstOrDefault();
+
+            if (savedNeedsUpdate) {
+                savedGlobal.MostRecentProfile = replacement;
+                _dataHandler.SetGlobalSaveData(_serializer, savedGlobal);
+            }
+
+            if (loadedNeedsUpdate) {
+                LoadedGlobalData.MostRecentProfile = replacement;
+            }
+        }
+
+        private DateTime GetNewestSaveTime(string profile) {
+            DateTime newest = DateTime.MinValue;
+            foreach (string state in _dataHandler.GetAvailableStates(profile)) {
+                DateTime saveTime = _dataHandler.GetStateSaveData(_serializer, profile, state).SaveTime;
+                if (saveTime > newest) newest = saveTime;
+            }
+
+            return newest;
         }
 
         public IEnumerable<string> GetAvailableStates(string profile = null) {
@@ -243,12 +288,22 @@ namespace Infohazard.Sequencing {
                 Debug.LogError("A state cannot be saved without a name.");
                 return;
             }
-            
-            if (newStateName != LoadedStateData.StateName && !string.IsNullOrEmpty(LoadedStateData.StateName)) {
-                _dataHandler.CopyStateSaveData(LoadedProfileData.ProfileName, LoadedStateData.StateName, newStateName);
-            } else {
-                _dataHandler.ClearStateSaveData(LoadedProfileData.ProfileName, newStateName);
+
+            if (LoadedProfileData == null || LoadedStateData == null) {
+                Debug.LogError("Trying to save state data when no profile and state data are loaded.");
+                return;
             }
+            
+            string currentStateName = LoadedStateData.StateName;
+            if (string.IsNullOrEmpty(currentStateName)) {
+                // A new (unnamed) state replaces whatever was saved under this name.
+                _dataHandler.ClearStateSaveData(LoadedProfileData.ProfileName, newStateName);
+            } else if (newStateName != currentStateName) {
+                _dataHandler.CopyStateSaveData(_serializer, LoadedProfileData.ProfileName, currentStateName,
+                                               newStateName);
+            }
+            // Saving under the loaded state's own name keeps the slot's existing level and region data;
+            // only data that changed is written over it.
             
             LoadedStateData.StateName = newStateName;
             LoadedProfileData.MostRecentState = LoadedStateData.StateName;
@@ -260,31 +315,73 @@ namespace Infohazard.Sequencing {
             _loadedStateDataDirty = false;
         }
 
+        /// <summary>
+        /// Delete a saved state.
+        /// </summary>
+        /// <param name="profile">Profile to delete from, or null for the loaded profile.</param>
+        /// <param name="state">State to delete, or null for the loaded state (only allowed when
+        /// <paramref name="profile"/> is null).</param>
         public void DeleteStateData(string profile = null, string state = null) {
-            if (string.IsNullOrEmpty(profile)) {
-                if (string.IsNullOrEmpty(state)) {
-                    Debug.LogError("Trying to delete current state on a specified profile. This is not allowed.");
-                    return;
-                } else if (LoadedProfileData == null) {
+            bool useLoadedProfile = string.IsNullOrEmpty(profile);
+            if (useLoadedProfile) {
+                if (LoadedProfileData == null) {
                     Debug.LogError("Trying to delete current profile state data when no profile data is loaded.");
                     return;
-                } else {
-                    profile = LoadedProfileData.ProfileName;
-                } 
+                }
+
+                profile = LoadedProfileData.ProfileName;
             }
 
             if (string.IsNullOrEmpty(state)) {
-                if (LoadedStateData == null) {
-                    Debug.LogError("Trying to delete current profile state data when no state data is loaded.");
-                } else {
-                    state = LoadedStateData.StateName;
+                if (!useLoadedProfile) {
+                    Debug.LogError("Trying to delete current state on a specified profile. This is not allowed.");
+                    return;
                 }
+
+                if (string.IsNullOrEmpty(LoadedStateData?.StateName)) {
+                    Debug.LogError("Trying to delete current profile state data when no state data is loaded.");
+                    return;
+                }
+
+                state = LoadedStateData.StateName;
             }
-            
+
             bool deletingCurrentState = LoadedProfileData != null && LoadedProfileData.ProfileName == profile &&
                                         LoadedStateData != null && LoadedStateData.StateName == state;
+            _dataHandler.ClearStateSaveData(profile, state);
             if (deletingCurrentState) {
                 UnloadStateData();
+            }
+
+            UpdateMostRecentStateAfterDelete(profile, state);
+        }
+
+        /// <summary>
+        /// If the profile's most recent state was just deleted, point it at the newest remaining state (by save
+        /// time), or null if there is none. The saved profile is updated right away, since the deletion already
+        /// happened on disk; the loaded profile (if it is this one) is updated in memory as well.
+        /// </summary>
+        private void UpdateMostRecentStateAfterDelete(string profile, string deletedState) {
+            bool isLoadedProfile = LoadedProfileData != null && LoadedProfileData.ProfileName == profile;
+            ProfileSaveData savedProfile = _dataHandler.GetProfileSaveData(_serializer, profile);
+            bool savedNeedsUpdate = savedProfile.MostRecentState == deletedState;
+            bool loadedNeedsUpdate = isLoadedProfile && LoadedProfileData.MostRecentState == deletedState;
+            if (!savedNeedsUpdate && !loadedNeedsUpdate) return;
+
+            string replacement = _dataHandler.GetAvailableStates(profile)
+                                             .Select(name => (name, data: _dataHandler.GetStateSaveData(
+                                                                  _serializer, profile, name)))
+                                             .OrderByDescending(pair => pair.data.SaveTime)
+                                             .Select(pair => pair.name)
+                                             .FirstOrDefault();
+
+            if (savedNeedsUpdate) {
+                savedProfile.MostRecentState = replacement;
+                _dataHandler.SetProfileSaveData(_serializer, profile, savedProfile);
+            }
+
+            if (loadedNeedsUpdate) {
+                LoadedProfileData.MostRecentState = replacement;
             }
         }
 

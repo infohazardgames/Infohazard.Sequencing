@@ -20,6 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -28,6 +29,8 @@ using UnityEngine;
 
 namespace Infohazard.Sequencing {
     public class FileSaveDataHandler : SaveDataHandler {
+        private const string TempFileExtension = ".tmp";
+
         [SerializeField] private string _globalDataFolder = "SaveData/";
         [SerializeField] private string _globalDataFile = "Global.json";
         [SerializeField] private string _profileDataFile = "Profile.json";
@@ -92,9 +95,18 @@ namespace Infohazard.Sequencing {
             DeleteFileOrFolder(GetProfileDataFolder(profile));
         }
 
-        public override void CopyProfileSaveData(string sourceProfile, string destProfile) {
+        public override void CopyProfileSaveData(Serializer serializer, string sourceProfile, string destProfile) {
             ClearProfileSaveData(destProfile);
-            CopyDirectory(GetProfileDataFolder(sourceProfile), GetProfileDataFolder(destProfile));
+            if (!CopyDirectoryIfExists(GetProfileDataFolder(sourceProfile), GetProfileDataFolder(destProfile))) {
+                return;
+            }
+
+            // The copied file still has the source's name.
+            string path = GetProfileDataFile(destProfile);
+            ProfileSaveData data = LoadDataFromFile<ProfileSaveData>(serializer, path);
+            if (data == null) return;
+            data.ProfileName = destProfile;
+            SaveDataToFile(serializer, path, data);
         }
 
         public override IEnumerable<string> GetAvailableStates(string profile) {
@@ -117,9 +129,20 @@ namespace Infohazard.Sequencing {
             DeleteFileOrFolder(GetStateDataFolder(profile, state));
         }
 
-        public override void CopyStateSaveData(string profile, string sourceState, string destState) {
+        public override void CopyStateSaveData(Serializer serializer, string profile, string sourceState,
+                                               string destState) {
             ClearStateSaveData(profile, destState);
-            CopyDirectory(GetStateDataFolder(profile, sourceState), GetStateDataFolder(profile, destState));
+            if (!CopyDirectoryIfExists(GetStateDataFolder(profile, sourceState),
+                                       GetStateDataFolder(profile, destState))) {
+                return;
+            }
+
+            // The copied file still has the source's name.
+            string path = GetStateDataFile(profile, destState);
+            StateSaveData data = LoadDataFromFile<StateSaveData>(serializer, path);
+            if (data == null) return;
+            data.StateName = destState;
+            SaveDataToFile(serializer, path, data);
         }
 
         public override IEnumerable<int> GetAvailableLevels(string profile, string state) {
@@ -220,16 +243,31 @@ namespace Infohazard.Sequencing {
         }
 
         private static void SaveDataToFile(Serializer serializer, string path, object data) {
+            // Write to a temporary file and swap it in, so a failed or interrupted write never damages the
+            // existing file.
+            string tempPath = path + TempFileExtension;
             try {
                 string dir = Path.GetDirectoryName(path);
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) {
                     Directory.CreateDirectory(dir);
                 }
 
-                using Stream stream = new FileStream(path, FileMode.Create);
-                serializer.Write(stream, data);
-            } catch (IOException ex) {
+                using (Stream stream = new FileStream(tempPath, FileMode.Create)) {
+                    serializer.Write(stream, data);
+                }
+
+                if (File.Exists(path)) {
+                    File.Replace(tempPath, path, null);
+                } else {
+                    File.Move(tempPath, path);
+                }
+            } catch (Exception ex) {
                 Debug.LogException(ex);
+                try {
+                    if (File.Exists(tempPath)) File.Delete(tempPath);
+                } catch (IOException) {
+                    // Nothing more we can do; the original file is untouched either way.
+                }
             }
         }
 
@@ -241,6 +279,12 @@ namespace Infohazard.Sequencing {
             if (Directory.Exists(path)) {
                 Directory.Delete(path, true);
             }
+        }
+
+        private static bool CopyDirectoryIfExists(string sourceDirName, string destDirName) {
+            if (!Directory.Exists(sourceDirName)) return false;
+            CopyDirectory(sourceDirName, destDirName);
+            return true;
         }
 
         private static void CopyDirectory(string sourceDirName, string destDirName)

@@ -14,9 +14,11 @@ namespace Infohazard.Sequencing {
             _sources = sources.ToList();
         }
 
-        public float Progress => _sources.Sum(source => source.Progress) / _sources.Count;
-        
+        // With no sources there is nothing to wait for, so it counts as complete.
+        public float Progress => _sources.Count == 0 ? 1 : _sources.Sum(source => source.Progress) / _sources.Count;
+
         public UniTask WaitForCompletionTask() {
+            if (_sources.Count == 0) return UniTask.CompletedTask;
             return UniTask.WhenAll(_sources.Select(source => source.WaitForCompletionTask()));
         }
     }

@@ -84,10 +84,12 @@ namespace Infohazard.Sequencing.Editor {
                 bool isLoaded = EditorPrefs.GetBool($"OpenScenes[{i}].loaded", true);
                 if (string.IsNullOrEmpty(name)) continue;
 
-                EditorSceneManager.OpenScene(name, i == 0 ? OpenSceneMode.Single : OpenSceneMode.Additive);
+                // Use the returned scene: GetSceneByName doesn't accept a full path, so it couldn't find the scene
+                // to close again.
+                Scene openedScene =
+                    EditorSceneManager.OpenScene(name, i == 0 ? OpenSceneMode.Single : OpenSceneMode.Additive);
                 if (!isLoaded) {
-                    Scene loadedScene = SceneManager.GetSceneByName(name);
-                    EditorSceneManager.CloseScene(loadedScene, false);
+                    EditorSceneManager.CloseScene(openedScene, false);
                 }
             }
 
