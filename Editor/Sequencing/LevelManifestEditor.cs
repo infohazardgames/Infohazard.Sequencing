@@ -31,7 +31,7 @@ namespace Infohazard.Sequencing.Editor {
     [CustomEditor(typeof(LevelManifest))]
     public class LevelManifestEditor : UnityEditor.Editor {
         public override void OnInspectorGUI() {
-            var action = ExpandableAttributeDrawer.SaveAction;
+            System.Action<Object, string> action = ExpandableAttributeDrawer.SaveAction;
             ExpandableAttributeDrawer.SaveAction = SaveAction;
 
             DrawDefaultInspector();
@@ -47,7 +47,7 @@ namespace Infohazard.Sequencing.Editor {
         }
 
         private void SetRegionLevelIDs() {
-            var manifest = (LevelManifest) target;
+            LevelManifest manifest = (LevelManifest) target;
             if (manifest.Levels == null) return;
 
             foreach (LevelManifestLevelEntry level in manifest.Levels) {
@@ -64,7 +64,7 @@ namespace Infohazard.Sequencing.Editor {
         }
 
         private void ClearDuplicateEntries() {
-            var manifest = (LevelManifest) target;
+            LevelManifest manifest = (LevelManifest) target;
             if (manifest.Levels == null) return;
 
             HashSet<LevelManifestLevelEntry> seenLevels = new HashSet<LevelManifestLevelEntry>();
@@ -100,7 +100,7 @@ namespace Infohazard.Sequencing.Editor {
         private static HashSet<Object> _validChildObjects = new HashSet<Object>();
         private void CleanupUnusedObjects() {
             _validChildObjects.Clear();
-            var manifest = (LevelManifest) target;
+            LevelManifest manifest = (LevelManifest) target;
             if (manifest.Levels == null) return;
             
             foreach (LevelManifestLevelEntry level in manifest.Levels) {

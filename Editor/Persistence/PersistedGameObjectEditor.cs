@@ -35,7 +35,7 @@ namespace SBR.Editor.Persistence {
         private static readonly string[] ExcludeProps = {"m_Script", "_dynamicPrefabID", "_instanceID"};
         
         public override void OnInspectorGUI() {
-            var instanceIDProp = serializedObject.FindProperty("_instanceID");
+            SerializedProperty instanceIDProp = serializedObject.FindProperty("_instanceID");
 
             foreach (PersistedGameObject targetObj in targets.Cast<PersistedGameObject>()) {
                 PrefabStage stage = PrefabStageUtility.GetPrefabStage(targetObj.gameObject);

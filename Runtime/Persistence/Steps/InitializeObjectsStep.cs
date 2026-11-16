@@ -26,7 +26,7 @@ using UnityEngine;
 namespace Infohazard.Sequencing {
     public class InitializeObjectsStep : MonoBehaviour, IExecutionStep {
         public async UniTask Execute(ExecutionStepArguments args) {
-            var level = PersistedLevelRoot.Current;
+            PersistedLevelRoot level = PersistedLevelRoot.Current;
             if (!level) {
                 return;
             }

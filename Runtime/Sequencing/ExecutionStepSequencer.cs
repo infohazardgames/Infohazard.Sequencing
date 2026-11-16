@@ -37,7 +37,7 @@ namespace Infohazard.Sequencing {
         public static bool InitialSceneIsLoaded {
             get {
                 for (int i = 0; i < SceneManager.sceneCount; i++) {
-                    var scene = SceneManager.GetSceneAt(i);
+                    Scene scene = SceneManager.GetSceneAt(i);
                     if (scene.buildIndex == 0) return true;
                 }
 

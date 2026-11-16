@@ -31,7 +31,7 @@ namespace Infohazard.Sequencing {
         public bool ObjectsLoaded { get; private set; }
 
         public override UniTask Initialize() {
-            var level = PersistedLevelRoot.Current;
+            PersistedLevelRoot level = PersistedLevelRoot.Current;
             if (!level) {
                 Debug.LogError("Trying to initialize PersistedRegionRoot with no PersistedLevelRoot.");
                 return UniTask.CompletedTask;

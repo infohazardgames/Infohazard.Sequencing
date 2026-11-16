@@ -323,14 +323,14 @@ namespace Infohazard.Sequencing {
 
         protected override void Subscribe() {
             base.Subscribe();
-            foreach (var data in _objects.Values) {
+            foreach (ObjectSaveData data in _objects.Values) {
                 Subscribe(data);
             }
         }
 
         protected override void Unsubscribe() {
             base.Unsubscribe();
-            foreach (var data in _objects.Values) {
+            foreach (ObjectSaveData data in _objects.Values) {
                 Unsubscribe(data);
             }
         }

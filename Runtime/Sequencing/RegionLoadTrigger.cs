@@ -30,7 +30,7 @@ namespace Infohazard.Sequencing {
         [SerializeField] private SceneGroup _sceneGroup;
 
         public void Activate() {
-            var lvl = LevelRoot.Current;
+            LevelRoot lvl = LevelRoot.Current;
             if (!lvl) {
                 Debug.LogError("Cannot load or unload regions without a current LevelRoot.");
                 return;

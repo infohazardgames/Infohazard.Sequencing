@@ -129,9 +129,9 @@ namespace Infohazard.Sequencing {
         }
 
         private bool IsPrefab() {
-            var stage = PrefabStageUtility.GetPrefabStage(gameObject);
-            var type = PrefabUtility.GetPrefabAssetType(gameObject);
-            var status = PrefabUtility.GetPrefabInstanceStatus(gameObject);
+            PrefabStage stage = PrefabStageUtility.GetPrefabStage(gameObject);
+            PrefabAssetType type = PrefabUtility.GetPrefabAssetType(gameObject);
+            PrefabInstanceStatus status = PrefabUtility.GetPrefabInstanceStatus(gameObject);
 
 
             return (stage != null && transform.parent == null) ||
@@ -258,7 +258,7 @@ namespace Infohazard.Sequencing {
             // Update container after changing region.
             container = Container;
 
-            var data = container.RegisterNewDynamicObject(_prefabReference.AssetGUID, _instanceID);
+            ObjectSaveData data = container.RegisterNewDynamicObject(_prefabReference.AssetGUID, _instanceID);
             data.CustomData = SaveData.CustomData;
             data.Destroyed = false;
             data.Initialized = true;

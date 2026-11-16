@@ -45,7 +45,7 @@ namespace Infohazard.Sequencing {
                 return;
             }
             
-            var level = LevelManifest.Instance.GetLevelWithSceneNameOrPath(sceneToLoad);
+            LevelManifestLevelEntry level = LevelManifest.Instance.GetLevelWithSceneNameOrPath(sceneToLoad);
 
             var loading = LoadingScreen.Instance;
             if (loading != null && operation.IsValid) {

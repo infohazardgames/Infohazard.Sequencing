@@ -53,13 +53,13 @@ namespace Infohazard.Sequencing.Editor {
             EditorPrefs.SetString("ActiveScene", SceneManager.GetActiveScene().path);
             EditorPrefs.SetInt("OpenSceneCount", SceneManager.sceneCount);
             for (int i = 0; i < SceneManager.sceneCount; i++) {
-                var scene = SceneManager.GetSceneAt(i);
+                Scene scene = SceneManager.GetSceneAt(i);
                 EditorPrefs.SetString($"OpenScenes[{i}].name", scene.path);
                 EditorPrefs.SetBool($"OpenScenes[{i}].loaded", scene.isLoaded);
             }
 
             EditorPrefs.SetInt("OpenLevel", -1);
-            foreach (var level in LevelManifest.Instance.Levels) {
+            foreach (LevelManifestLevelEntry level in LevelManifest.Instance.Levels) {
                 bool isLoaded = SceneManager.GetSceneByPath(level.Scene.Path).isLoaded;
                 foreach (LevelManifestRegionEntry region in level.Regions) {
                     bool isRegionLoaded = SceneManager.GetSceneByPath(region.Scene.Path).isLoaded;
@@ -86,7 +86,7 @@ namespace Infohazard.Sequencing.Editor {
 
                 EditorSceneManager.OpenScene(name, i == 0 ? OpenSceneMode.Single : OpenSceneMode.Additive);
                 if (!isLoaded) {
-                    var loadedScene = SceneManager.GetSceneByName(name);
+                    Scene loadedScene = SceneManager.GetSceneByName(name);
                     EditorSceneManager.CloseScene(loadedScene, false);
                 }
             }

@@ -58,7 +58,7 @@ namespace Infohazard.Sequencing {
             } else {
                 string scenePath = EditorPrefs.GetString("ActiveScene", null);
                 for (int i = 1; i < EditorBuildSettings.scenes.Length; i++) {
-                    var scene = EditorBuildSettings.scenes[i];
+                    EditorBuildSettingsScene scene = EditorBuildSettings.scenes[i];
                     if (scene.path == scenePath) {
                         sceneParam.Set(arguments, scenePath);
                     }

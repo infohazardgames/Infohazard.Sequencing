@@ -31,14 +31,14 @@ namespace Infohazard.Sequencing {
         [SerializeField] private SceneRef _defaultScene;
         
         public UniTask Execute(ExecutionStepArguments arguments) {
-            var state = PersistenceManager.Instance.LoadedStateData;
+            StateSaveData state = PersistenceManager.Instance.LoadedStateData;
             string sceneToLoad = _defaultScene.Name;
             if (state != null && !string.IsNullOrEmpty(state.CurrentScene)) {
                 sceneToLoad = state.CurrentScene;
             }
             LoadSceneOrLevelStep.ParamSceneToLoad.Set(arguments, sceneToLoad);
 
-            var level = LevelManifest.Instance.GetLevelWithSceneNameOrPath(sceneToLoad);
+            LevelManifestLevelEntry level = LevelManifest.Instance.GetLevelWithSceneNameOrPath(sceneToLoad);
             if (!level) return UniTask.CompletedTask;
             
             List<int> regionsToLoad = new List<int>();
